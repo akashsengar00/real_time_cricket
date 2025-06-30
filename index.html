@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Cricket Dashboard</title>
+  <style>
+    body { font-family: Arial; background: #f4f4f4; padding: 20px; }
+    h2 { margin-bottom: 20px; }
+
+    .tabs, .subtabs { margin-bottom: 20px; }
+    .tab, .subtab {
+      display: inline-block; padding: 10px 15px;
+      background: #ddd; margin-right: 5px;
+      cursor: pointer; border-radius: 5px;
+    }
+    .tab.active, .subtab.active {
+      background: #007bff; color: #fff; font-weight: bold;
+    }
+
+    .match {
+      background: white; padding: 15px; margin-bottom: 20px;
+      border-radius: 8px; box-shadow: 0 2px 4px #ccc;
+    }
+    .title { font-size: 18px; font-weight: bold; }
+    .info { color: #555; margin: 5px 0; }
+    .section-content { display: none; margin-top: 10px; }
+    .section-content.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <h2>Live Cricket Dashboard</h2>
+
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('live')">Live</div>
+    <div class="tab" onclick="showTab('upcoming')">Upcoming</div>
+    <div class="tab" onclick="showTab('completed')">Completed</div>
+  </div>
+
+  <div id="matches">Loading...</div>
+
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+    let allMatches = [];
+
+    function filterMatches(type) {
+      return allMatches.filter(match => {
+        const status = (match.status || "").toLowerCase();
+        if (type === "live") return status.includes("live") || status.includes("day") || status.includes("inning");
+        if (type === "upcoming") return status.includes("starts") || status.includes("schedule");
+        if (type === "completed") return status.includes("won") || status.includes("match over") || status.includes("result");
+        return true;
+      });
+    }
+
+    function showTab(type) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelector(`.tab[onclick*="${type}"]`).classList.add("active");
+      renderMatches(filterMatches(type));
+    }
+
+    function renderMatches(matches) {
+      const container = document.getElementById("matches");
+      container.innerHTML = matches.length ? "" : "<p>No matches found.</p>";
+
+      matches.forEach((match, index) => {
+        const team1 = match.teams?.[0] || "Team 1";
+        const team2 = match.teams?.[1] || "Team 2";
+        const score1 = match.scores?.[0] || "N/A";
+        const score2 = match.scores?.[1] || "";
+
+        const matchDiv = document.createElement("div");
+        matchDiv.className = "match";
+        matchDiv.innerHTML = `
+          <div class="title"><a href="${match.link}" target="_blank">${match.title}</a></div>
+          <div class="subtabs" id="subtabs-${index}">
+            <div class="subtab active" onclick="showSection(${index}, 'info')">Match Info</div>
+            <div class="subtab" onclick="showSection(${index}, 'squads')">Squads</div>
+            <div class="subtab" onclick="showSection(${index}, 'live')">Live</div>
+            <div class="subtab" onclick="showSection(${index}, 'scorecard')">Scorecard</div>
+          </div>
+
+          <div class="section-content active" id="section-${index}-info">
+            <p><strong>Teams:</strong> ${team1} vs ${team2}</p>
+            <p><strong>Status:</strong> ${match.status}</p>
+            <p><strong>Venue:</strong> ${match.venue || "N/A"}</p>
+          </div>
+
+          <div class="section-content" id="section-${index}-squads">
+            <p>⚠️ Squad data coming soon (scraped from match link).</p>
+          </div>
+
+          <div class="section-content" id="section-${index}-live">
+            <p><strong>Live Status:</strong> ${match.status}</p>
+            <p><strong>Live Scores:</strong><br>${team1}: ${score1}<br>${team2}: ${score2 || "Yet to bat"}</p>
+          </div>
+
+          <div class="section-content" id="section-${index}-scorecard">
+            <p><strong>${team1}:</strong> ${score1}</p>
+            <p><strong>${team2}:</strong> ${score2 || "Yet to bat"}</p>
+            <p>🏏 Full scorecard: <a href="${match.link}" target="_blank">View on ESPNcricinfo</a></p>
+          </div>
+        `;
+        container.appendChild(matchDiv);
+      });
+    }
+
+    function showSection(index, section) {
+      document.querySelectorAll(`#subtabs-${index} .subtab`).forEach(tab => tab.classList.remove("active"));
+      document.querySelector(`#subtabs-${index} .subtab[onclick*="${section}"]`).classList.add("active");
+
+      document.querySelectorAll(`[id^="section-${index}-"]`).forEach(div => div.classList.remove("active"));
+      document.getElementById(`section-${index}-${section}`).classList.add("active");
+    }
+
+    socket.on("match_update", data => {
+      allMatches = data.matches || [];
+      const activeTab = document.querySelector(".tab.active").textContent.toLowerCase();
+      showTab(activeTab);
+    });
+
+    fetch("/api/live-matches")
+      .then(res => res.json())
+      .then(data => {
+        allMatches = data.matches || [];
+        showTab("live");
+      });
+  </script>
+</body>
+</html>
